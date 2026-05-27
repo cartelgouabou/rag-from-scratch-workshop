@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+pymupdf
+pdfplumber
+pandas
+openpyxl
+xlrd
+langchain-text-splitters
+Pillow
+python-doctr[torch]
+chromadb
+sqlalchemy
+httpx
+pytest

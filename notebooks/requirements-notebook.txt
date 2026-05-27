@@ -1,0 +1,10 @@
+# Dépendances du notebook de présentation (en plus de backend/requirements.txt)
+jupyter
+ipykernel
+itables
+sentence-transformers
+matplotlib
+pandas
+numpy
+torch
+nest-asyncio
