@@ -706,21 +706,189 @@ for label, question in questions:
 | Génération | `routes_chat.py` + Gateway | sans RAG vs avec RAG (`WORKSHOP_ANSWER_MODEL`) |
 | Routeur | `router.py` | `heuristic_route` (§8) |
 
-### Pistes d'amélioration
+*Notebook* : retrieval direct (distance L2). *Production* : sur-rappel, rerank, diversification, Gateway (voir cellules suivantes)."""
+    ),
+    md(
+        """### Pistes d'amélioration : techniques, méthodes et outils
 
-- **Rerank et diversification** : en production, [`_prepare_vector_context`](../backend/api/routes_chat.py) récupère `top_k * 3` candidats, applique [`_rerank_candidates`](../backend/api/routes_chat.py) (overlap lexical + distance) puis [`_diversify_results`](../backend/api/routes_chat.py) (limite par document).
-- **Filtre par nom de fichier** : si la question contient le nom d'un PDF indexé, restriction Chroma (`where={"filename": ...}`) via [`_extract_filename_filter`](../backend/api/routes_chat.py).
-- **Routeur multi-sources** : illustré en §8 — SQL (CSV/Excel) en plus du vecteur ; routeur LLM (`ROUTER_MODEL`) si clé Gateway.
+Bonnes pratiques pour améliorer un RAG en production. L'optimisation se joue à **chaque étape** du pipeline — le découpage naïf ou la seule recherche vectorielle sont des pièges fréquents.
 
-### Checklist avant présentation
+#### Grandes leviers d'optimisation (état de l'art)
 
-- [ ] **PDF** déposé dans `data/samples/`
-- [ ] `pip install -r backend/requirements.txt -r notebooks/requirements-notebook.txt`
-- [ ] `.env` : `VERCEL_AI_GATEWAY_KEY` (la clé suffit pour §7 ; `ANSWER_MODEL` = prod uniquement)
-- [ ] Section 7 : `WORKSHOP_ANSWER_MODEL_KEY` ; exécuter les **deux cellules** dans l'ordre (pause anti-429)
-- [ ] Premier run : téléchargement Sentence-Transformers
-- [ ] Éviter la cellule OCR DocTR en live sauf besoin
-- [ ] Adapter `DEMO_QUESTION` à votre document PDF"""
+- **Chunking sémantique / structurel** — Ne pas couper « à la va-vite » par taille fixe : préserver titres, paragraphes et enchaînements logiques ; pour documents non structurés, faire superviser le découpage par l'IA (segments cohérents).
+- **Recherche hybride + métadonnées** — Vecteurs seuls insuffisent souvent : combiner **BM25** (mots-clés exacts) et filtres **metadata** (date, auteur, géographie, type de doc).
+- **GraphRAG** — Graphe de connaissances pour relier entités (personnes, lieux, concepts) **entre documents** ; navigation relationnelle que les embeddings plats ne capturent pas.
+- **Reranking** — Souvent le **plus gros gain qualité** après un premier retrieval : modèle dédié (ex. Cohere Rerank) pour ne garder que les passages vraiment utiles avant le LLM.
+- **Prompt structuré (XML)** — Balises `<instruction>`, `<context>`, `<question>` pour séparer clairement consignes, sources et requête utilisateur.
+- **Scratchpad (brouillon)** — Sur contextes longs : forcer une étape intermédiaire (extraire faits / variables pertinentes, raisonnement CoT) **avant** la réponse finale → meilleure fiabilité.
+
+Détail par phase ci-dessous (techniques | idée | outils).
+
+#### Ingestion et préparation des documents
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| PDF natif vs OCR | Texte extractible d'abord ; OCR si scan (DPI, contraste) | pdfplumber, PyMuPDF, DocTR, Tesseract |
+| Nettoyage | Supprimer en-têtes/pieds de page, doublons, artefacts | règles métier, Unstructured |
+| Métadonnées riches | page, section, type, date → filtres et citations | stockage Chroma / SQL, pipeline d'ingestion |
+
+#### Chunking et indexation
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| Taille / overlap | `CHUNK_SIZE`, `CHUNK_OVERLAP` selon densité du document | LangChain splitters, LlamaIndex |
+| Découpe par structure | Respecter titres, paragraphes, tableaux | chunker par sections (comme `chunker.py`) |
+| Chunking sémantique / IA | Segments logiques ; IA pour docs non structurés | LlamaIndex semantic splitter, Unstructured |
+| Parent–child / small-to-big | Petits chunks pour la recherche ; passage élargi pour le LLM | LlamaIndex, archi « parent document » |
+| Choix d'embedding | Modèle multilingue, domaine proche, même modèle index + requête | sentence-transformers, OpenAI, Voyage, Gateway |
+| Réindexation | Obligatoire si changement de modèle ou de chunking | job batch, onglet Knowledge |
+
+#### Retrieval
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| Sur-rappel | Récupérer `top_k × N` candidats avant sélection finale | paramètre `candidate_count` |
+| Reranking lexical | Overlap mots, BM25 en complément du vecteur | BM25, Elasticsearch |
+| Reranking cross-encoder | **Gain qualité souvent maximal** — score (question, passage) | bge-reranker, **Cohere Rerank**, Jina |
+| Diversification | Éviter 10 chunks du même PDF ; MMR ou quota par document | `_diversify_results` en prod |
+| Recherche hybride | Dense + sparse (mots exacts, acronymes, noms propres) | Chroma hybrid, LanceDB, Vespa |
+| GraphRAG | Relations entités cross-documents (graphe + vecteurs) | Microsoft GraphRAG, Neo4j, LlamaIndex Property Graph |
+| Filtres metadata | Restreindre par `filename`, date, auteur, géo | `where` Chroma |
+| Multi-query / HyDE | Plusieurs reformulations ou document hypothétique puis embedding | LangChain, LlamaIndex |
+
+#### Requête et orchestration
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| Reformulation | Clarifier la question avant embedding | LLM léger |
+| Décomposition | Sous-questions puis fusion des contextes | agents, LangGraph |
+| Routage multi-sources | SQL vs vecteur vs les deux | `router.py`, `ROUTER_MODEL` |
+| Cache | Embeddings de questions fréquentes | Redis, cache applicatif |
+
+#### Génération
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| Prompt grounded | « Réponds uniquement avec le contexte » ; refus si insuffisant | `VECTOR_PROMPT` |
+| Prompt XML structuré | Balises pour séparer instruction / contexte / question | templates XML dans le system prompt |
+| Scratchpad / CoT | Extraire d'abord les faits utiles, puis répondre | prompting multi-étapes, agents |
+| Citations | Lier chaque affirmation à une source | prompting + post-traitement |
+| Compression de contexte | Réduire les tokens avant le LLM | LLMLingua, extraction de phrases |
+| Réglages LLM | Température basse, `max_tokens`, modèle coût/qualité | Gateway, OpenAI, etc. |
+
+#### Observabilité et ops
+
+| Technique | Idée | Outils / écosystème |
+|-----------|------|---------------------|
+| Traçabilité | Logs des chunks, scores, latences | Langfuse, LangSmith, Arize Phoenix |
+| Coût et SLO | Tokens, p95 latence, taux d'erreur | dashboards, alertes |
+
+**Déjà dans ce dépôt (production)** — voir [`routes_chat.py`](../backend/api/routes_chat.py) et [`router.py`](../backend/agent/router.py) :
+
+- Sur-rappel + rerank lexical (overlap + distance L2) + diversification par document.
+- Filtre automatique sur le nom de fichier dans la question.
+- Routeur SQL / vecteur / both avec `ROUTER_MODEL` si clé Gateway."""
+    ),
+    md(
+        """### Perspectives : vigilance et architecture
+
+Points de vigilance pour un RAG **en production**, au-delà de la démo notebook.
+
+#### RAG vs fine-tuning
+
+- **RAG** : données **dynamiques**, **privées** ou confidentielles (dossiers médicaux, relevés bancaires, PDF métier) — le modèle lit le corpus à la volée sans l'embarquer dans ses poids.
+- **Fine-tuning** sur ces corpus : risque de **fuite** d'information, coût de réentraînement, **obsolescence** dès que les documents changent.
+
+#### Passage à l'échelle
+
+- Beaucoup de systèmes « fonctionnent » sur un **petit** jeu en mémoire ; à **millions de documents**, la pertinence et les **I/O disque** deviennent critiques.
+- Anticiper : dimensionnement de l'index, sharding, cache, benchmarks sur volume réaliste (pas seulement le PDF atelier).
+
+#### Sécurité
+
+- Le contexte injecté peut placer le LLM dans une situation **hors distribution** : document apparemment anodin + requête malveillante → le modèle peut **affaiblir** ses garde-fous habituels.
+- Mitigations : contrôle des sources indexées, politiques d'upload, **red teaming**, filtrage en amont.
+
+#### Coût et infrastructure
+
+- À grande échelle, l'architecture **serverless** ou le **découplage stockage / calcul** aide à maîtriser les coûts (vs serveurs toujours actifs) — souvent un facteur 10× à 100× sur le coût unitaire selon la charge."""
+    ),
+    md(
+        """### Évaluer un RAG : méthodes et métriques
+
+Ne pas se fier uniquement à la **similarité cosinus** en démo : mesurer retrieval et fidélité sur un **jeu de référence** (20–50 questions représentatives de vos PDF métier).
+
+#### Sortir du « vibe check »
+
+En revue technique, **bannir les adjectifs** (« mieux », « moins bien », « pas mal ») au profit de **mesures binaires ou chiffrées** : Recall@k, faithfulness, taux d'échec, latence p95.
+
+#### Évaluations simples et peu coûteuses
+
+Avant un **LLM-as-a-judge** systématique (coûteux, lent, biaisé), privilégier des signaux **rapides** :
+
+| Signal | Exemple |
+|--------|---------|
+| RegEx / règles | Format de réponse, champs obligatoires présents |
+| Longueur / compression | Ratio taille réponse vs contexte injecté |
+| Entités nommées (NER) | La réponse cite-t-elle les entités attendues du chunk ? |
+| Hit binaire | Chunk gold présent oui/non dans le top-k |
+
+#### Segmenter l'espace des requêtes
+
+Analyser les **types de questions** utilisateurs pour diagnostiquer les échecs :
+
+- **Manque de capacité** — il manque une brique (métadonnée, colonne SQL, rerank, filtre) : améliorer le pipeline.
+- **Manque d'inventaire** — le document ou la ligne n'existe pas dans le corpus : enrichir les sources, pas le modèle.
+
+#### Gouvernance et red teaming
+
+Dans les secteurs régulés : impliquer des **experts métier** (juristes, journalistes) ; taxonomies de risques ; tests **fraude**, **désinformation**, **injection** via documents indexés.
+
+#### Méthodes d'évaluation
+
+| Méthode | Description | Quand l'utiliser |
+|---------|-------------|------------------|
+| **Golden set** | Questions + réponses ou passages de référence + documents de test | Régression à chaque changement (chunking, embedding, rerank) |
+| **Évaluation humaine** | Annotateurs notent pertinence et fidélité | Validation métier avant mise en prod |
+| **LLM-as-a-judge** | Un LLM note la réponse par rapport au contexte | Automatisation à grande échelle (biais possibles) |
+| **A/B en production** | Deux configurations, métriques qualité + business | Après une baseline offline |
+
+**Frameworks** (implémentent souvent plusieurs métriques) : **RAGAS**, **DeepEval**, **TruLens**, **LangSmith**.
+
+#### Métriques retrieval (qualité de la recherche)
+
+*Prérequis* : savoir quels chunks sont **pertinents** pour chaque question (annotation humaine ou référence).
+
+| Métrique | Définition | Calcul |
+|----------|------------|--------|
+| **Recall@k** | Fraction des chunks pertinents retrouvés dans le top-k | (nb pertinents dans top-k) / (nb pertinents totaux), moyenne sur les questions |
+| **Hit Rate@k** (Success@k) | La recherche a-t-elle trouvé au moins un bon chunk ? | Pour chaque question : 1 si ≥1 pertinent dans top-k, sinon 0 ; puis **moyenne** |
+| **MRR** | Pénalise les bons résultats trop bas dans la liste | Pour chaque question : `1 / rang_du_premier_pertinent` (0 si aucun) ; puis **moyenne** (Mean Reciprocal Rank) |
+| **NDCG@k** | Prend en compte l'**ordre** et des niveaux de pertinence (0, 1, 2…) | **DCG@k** = Σ (2^rel_i − 1) / log₂(i+1) sur les rangs i≤k ; **NDCG** = DCG / IDCG (IDCG = DCG si ordre parfait) |
+
+#### Métriques génération et contexte (qualité de la réponse)
+
+| Métrique | Définition | Calcul (typique) |
+|----------|------------|------------------|
+| **Faithfulness** (groundedness) | La réponse est-elle **supportée** par le contexte (pas d'hallucination) ? | LLM-judge ou NLI : score 0–1 « la réponse découle des passages » ; **moyenne** sur le jeu |
+| **Answer relevancy** | La réponse **répond-elle** à la question ? | Similarité embedding(question, réponse) ou score LLM-judge ; **moyenne** |
+| **Context precision** | Les chunks envoyés au LLM sont-ils **utiles** (peu de bruit) ? | (chunks pertinents dans top-k) / k ; **moyenne** par question |
+| **Context recall** | Le contexte **couvre-t-il** l'information nécessaire ? | Part des faits de la référence présents dans l'union des chunks (souvent jugé par LLM) |
+
+#### Métriques ops (complément)
+
+| Métrique | Définition | Calcul |
+|----------|------------|--------|
+| **Latence** | Temps retrieval + génération | p50 / p95 en secondes sur N requêtes |
+| **Coût** | Dépense API | tokens entrée + sortie × tarif ; par session ou par jour |
+| **Exact match / F1** | Réponse identique ou chevauchement de tokens | Utile surtout pour FAQ à réponse courte ; rare en RAG conversationnel |
+
+#### Workflow recommandé
+
+1. Constituer un **golden set** sur vos documents réels.
+2. Exécuter le pipeline (config A vs config B).
+3. Calculer **Recall@k / MRR** (retrieval) et **faithfulness** (génération).
+4. Ne déployer en prod qu'après gain mesuré ou validation humaine."""
     ),
 ]
 

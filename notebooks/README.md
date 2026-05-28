@@ -4,30 +4,32 @@ Notebook pas-à-pas pour expliquer l'ingestion, le chunking, les embeddings, le 
 
 ## Prérequis
 
-1. Environnement Python **3.9+** (3.11+ recommandé, aligné sur le Docker backend).
-2. Dépendances backend installées (`pip install -r backend/requirements.txt`).
-3. Dépendances notebook (`pip install -r notebooks/requirements-notebook.txt`, inclut **itables** pour les tableaux interactifs).
-4. Fichier `.env` à la racine avec **`VERCEL_AI_GATEWAY_KEY`**. Le modèle atelier est choisi **en section 7** via **`WORKSHOP_ANSWER_MODEL_KEY`** : `"llama-3.2"` ou `"mistral-3b"` (indépendant de `ANSWER_MODEL` en production).
+Suivre [**SETUP.md**](../SETUP.md) à la racine du dépôt (Mac, Homebrew, **VS Code**, venv **`.venv-notebook`**, Python **3.11**).
 
-## Installation rapide
+1. Stack installée selon `SETUP.md` (CLT, Homebrew, `python@3.11`, VS Code + extensions Python / Jupyter).
+2. `pip install -r notebooks/requirements-notebook.txt` dans `.venv-notebook` (fichier **autonome**, sans `backend/requirements.txt`).
+3. Fichier `.env` à la racine avec **`VERCEL_AI_GATEWAY_KEY`** pour la section 7. Modèle atelier : **`WORKSHOP_ANSWER_MODEL_KEY`** = `"llama-3.2"` ou `"mistral-3b"`.
+
+## Installation rapide (rappel)
 
 ```bash
-cd /chemin/vers/rag-from-scratch-workshop
-python -m venv .venv-notebook
+cd rag-from-scratch-workshop
+python3.11 -m venv .venv-notebook
 source .venv-notebook/bin/activate
-pip install -r backend/requirements.txt
 pip install -r notebooks/requirements-notebook.txt
 python -m ipykernel install --user --name rag-workshop --display-name "RAG Workshop"
+cp .env.example .env   # puis renseigner VERCEL_AI_GATEWAY_KEY
 ```
+
+Ouvrir [`rag_atelier_presentation.ipynb`](rag_atelier_presentation.ipynb) dans **VS Code** et sélectionner le kernel **RAG Workshop** ou `.venv-notebook`.
 
 ## Démo interactive
 
 1. Copiez **votre PDF** dans [`data/samples/`](../data/samples/).
 2. Configurez `.env` (clé Gateway) ; en **section 7**, choisissez `WORKSHOP_ANSWER_MODEL_KEY` (`llama-3.2` ou `mistral-3b`).
-3. Lancez Jupyter : `jupyter lab notebooks/rag_atelier_presentation.ipynb`
-4. Exécutez les cellules dans l'ordre (ou *Run All* après avoir déposé le fichier).
-5. Laissez `DEMO_FILENAME = None` pour le premier PDF du dossier, ou précisez le nom du fichier.
-6. Adaptez `DEMO_QUESTION` pour interroger votre document.
+3. Dans VS Code, exécutez les cellules dans l'ordre (ou *Run All*).
+4. Laissez `DEMO_FILENAME = None` pour le premier PDF du dossier, ou précisez le nom du fichier.
+5. Adaptez `DEMO_QUESTION` pour interroger votre document.
 
 Voir aussi [`data/samples/README.md`](../data/samples/README.md).
 

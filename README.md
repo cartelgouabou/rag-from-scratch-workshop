@@ -31,14 +31,14 @@ Parcours pas-à-pas **sans Docker** pour le pipeline RAG sur un PDF : [`notebook
 | 8 | Agent routeur (amélioration multi-sources) |
 | 9 | Synthèse et pistes d'évolution |
 
-**Installation notebook** — voir [`notebooks/README.md`](notebooks/README.md) :
+**Installation notebook (Mac)** — [**SETUP.md**](SETUP.md) : clone ou ZIP → [`./setup-mac.sh`](setup-mac.sh) (Homebrew, Python 3.11, VS Code, Docker Desktop, venv `.venv-notebook`).
 
 ```bash
-python -m venv .venv-notebook
-source .venv-notebook/bin/activate
-pip install -r backend/requirements.txt -r notebooks/requirements-notebook.txt
-jupyter lab notebooks/rag_atelier_presentation.ipynb
+cd rag-from-scratch-workshop
+./setup-mac.sh
 ```
+
+Puis ouvrir dans **VS Code** : [`notebooks/rag_atelier_presentation.ipynb`](notebooks/rag_atelier_presentation.ipynb).
 
 - Déposez un PDF dans [`data/samples/`](data/samples/) (un exemple DermaScan est fourni).
 - Section **7** : choisir `WORKSHOP_ANSWER_MODEL_KEY` = `"llama-3.2"` (`meta/llama-3.2-3b`) ou `"mistral-3b"` (`mistral/ministral-3b`) — distinct de `ANSWER_MODEL` en production.
