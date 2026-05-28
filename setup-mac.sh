@@ -16,8 +16,17 @@ SKIP_PIP=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
+DEBUG_LOG="${PROJECT_ROOT}/.cursor/debug-8804a1.log"
 
-log() { printf '\n\033[1;32m==>\033[0m %s\n' "$*"; }
+# #region agent log
+_agent_debug_log() {
+  local hypothesis_id="$1" location="$2" message="$3" data="$4"
+  mkdir -p "${PROJECT_ROOT}/.cursor" 2>/dev/null || true
+  printf '%s\n' "{\"sessionId\":\"8804a1\",\"hypothesisId\":\"${hypothesis_id}\",\"location\":\"${location}\",\"message\":\"${message}\",\"data\":${data},\"timestamp\":$(($(date +%s) * 1000))}" >>"${DEBUG_LOG}" 2>/dev/null || true
+}
+# #endregion
+
+log() { printf '\n\033[1;32m==>\033[0m %s\n' "$*" >&2; }
 warn() { printf '\n\033[1;33m!!>\033[0m %s\n' "$*" >&2; }
 die() { printf '\n\033[1;31mERR>\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -175,6 +184,20 @@ ensure_vscode_extensions() {
   done
 }
 
+venv_python_path() {
+  local candidate="${PROJECT_ROOT}/${VENV_NAME}/bin/python"
+  if [[ -x "${candidate}" ]]; then
+    echo "${candidate}"
+    return 0
+  fi
+  candidate="${PROJECT_ROOT}/${VENV_NAME}/bin/python3.11"
+  if [[ -x "${candidate}" ]]; then
+    echo "${candidate}"
+    return 0
+  fi
+  return 1
+}
+
 ensure_venv() {
   local py311 venv_python
   py311="$(python311_path)"
@@ -182,15 +205,28 @@ ensure_venv() {
     die "Interpréteur introuvable : ${py311}"
   fi
 
-  if [[ -x "${PROJECT_ROOT}/${VENV_NAME}/bin/python" ]]; then
+  if [[ -d "${PROJECT_ROOT}/${VENV_NAME}" ]] && ! venv_python_path >/dev/null; then
+    warn "venv ${VENV_NAME} incomplet ou cassé — recréation"
+    # #region agent log
+    _agent_debug_log "B" "ensure_venv" "remove_broken_venv" "{\"venvDir\":\"${PROJECT_ROOT}/${VENV_NAME}\"}"
+    # #endregion
+    rm -rf "${PROJECT_ROOT}/${VENV_NAME}"
+  fi
+
+  if venv_python_path >/dev/null; then
     log "venv ${VENV_NAME} : déjà présent"
+    # #region agent log
+    _agent_debug_log "B" "ensure_venv" "reuse_existing_venv" "{\"python\":\"$(venv_python_path)\"}"
+    # #endregion
   else
     log "Création du venv ${VENV_NAME} avec ${py311}..."
     "${py311}" -m venv "${PROJECT_ROOT}/${VENV_NAME}"
+    # #region agent log
+    _agent_debug_log "C" "ensure_venv" "venv_created" "{\"py311\":\"${py311}\"}"
+    # #endregion
   fi
 
-  venv_python="${PROJECT_ROOT}/${VENV_NAME}/bin/python"
-  [[ -x "${venv_python}" ]] || die "venv invalide : ${venv_python}"
+  venv_python="$(venv_python_path)" || die "venv invalide : ${PROJECT_ROOT}/${VENV_NAME}/bin/python introuvable après création"
   echo "${venv_python}"
 }
 
@@ -201,7 +237,8 @@ ensure_pip_deps() {
   fi
 
   local venv_python="$1"
-  local venv_pip="${PROJECT_ROOT}/${VENV_NAME}/bin/pip"
+  local venv_pip="${venv_python%/*}/pip"
+  [[ -x "${venv_pip}" ]] || venv_pip="${PROJECT_ROOT}/${VENV_NAME}/bin/pip"
 
   log "Mise à jour de pip (peut prendre 10–20 min avec PyTorch)..."
   "${venv_python}" -m pip install --upgrade pip
@@ -214,7 +251,8 @@ ensure_ipykernel() {
     return 0
   fi
 
-  local venv_python="${PROJECT_ROOT}/${VENV_NAME}/bin/python"
+  local venv_python
+  venv_python="$(venv_python_path)" || die "venv introuvable pour ipykernel"
   log "Kernel Jupyter : ${KERNEL_DISPLAY}"
   "${venv_python}" -m ipykernel install --user --name "${KERNEL_NAME}" --display-name "${KERNEL_DISPLAY}"
 }
@@ -265,6 +303,10 @@ main() {
 
   local venv_python
   venv_python="$(ensure_venv)"
+  # #region agent log
+  _agent_debug_log "A" "main" "captured_venv_python" "{\"length\":${#venv_python},\"executable\":$([[ -x \"${venv_python}\" ]] && echo true || echo false)}"
+  # #endregion
+  [[ -x "${venv_python}" ]] || die "Interpréteur venv invalide après capture : ${venv_python}"
   ensure_pip_deps "${venv_python}"
   ensure_ipykernel
   ensure_env_file
