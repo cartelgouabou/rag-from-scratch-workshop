@@ -40,7 +40,7 @@ cd rag-from-scratch-workshop
 
 Puis ouvrir dans **VS Code** : [`notebooks/rag_atelier_presentation.ipynb`](notebooks/rag_atelier_presentation.ipynb).
 
-- Déposez un PDF dans [`data/samples/`](data/samples/) (un exemple DermaScan est fourni).
+- Déposez un PDF dans [`data/samples/`](data/samples/) (un exemple fictif DermaScan est fourni).
 - Section **7** : choisir `WORKSHOP_ANSWER_MODEL_KEY` = `"llama-3.2"` (`meta/llama-3.2-3b`) ou `"mistral-3b"` (`mistral/ministral-3b`) — distinct de `ANSWER_MODEL` en production.
 - Deux cellules de génération avec pause anti-429 (free tier Gateway).
 
@@ -84,7 +84,7 @@ Sans clé Gateway : le chat et les embeddings distants de l'app ne fonctionnent 
 
 ## Données d'exemple
 
-- [`data/samples/Dossier_CIFRE_DermaScan_draft_v3.pdf`](data/samples/Dossier_CIFRE_DermaScan_draft_v3.pdf) — PDF atelier
+- [`data/samples/DermaScan_fiche_projet_demo.pdf`](data/samples/DermaScan_fiche_projet_demo.pdf) — PDF fictif atelier (données simulées)
 - [`data/samples/example.csv`](data/samples/example.csv) — KPI centres (branche SQL de l'app, hors notebook PDF)
 
 ## Notes d'exploitation

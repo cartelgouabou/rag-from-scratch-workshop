@@ -103,7 +103,7 @@ print("  Atelier génération: choisi en section 7 (WORKSHOP_ANSWER_MODEL_KEY)")
         """from demo_paths import SAMPLES_DIR, list_pdf_candidates, load_demo_bytes
 
 # None = premier PDF dans data/samples/ | sinon nom exact du fichier
-DEMO_FILENAME = None  # ex: "Dossier_CIFRE_DermaScan_draft_v3.pdf"
+DEMO_FILENAME = None  # ex: "DermaScan_fiche_projet_demo.pdf"
 
 demo_file, demo_bytes = load_demo_bytes(DEMO_FILENAME)
 
