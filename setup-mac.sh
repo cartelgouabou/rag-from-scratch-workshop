@@ -14,8 +14,17 @@ DOCKER_WAIT_SECONDS=120
 SKIP_DOCKER=false
 SKIP_PIP=false
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="${SCRIPT_DIR}"
+DEBUG_LOG="${PROJECT_ROOT}/.cursor/debug-d9f1c6.log"
+
+# #region agent log
+_agent_debug_log() {
+  local hypothesis_id="$1" location="$2" message="$3" data="$4"
+  mkdir -p "${PROJECT_ROOT}/.cursor" 2>/dev/null || true
+  printf '%s\n' "{\"sessionId\":\"d9f1c6\",\"hypothesisId\":\"${hypothesis_id}\",\"location\":\"${location}\",\"message\":\"${message}\",\"data\":${data},\"timestamp\":$(($(date +%s) * 1000)),\"runId\":\"setup\"}" >>"${DEBUG_LOG}" 2>/dev/null || true
+}
+# #endregion
 
 log() { printf '\n\033[1;32m==>\033[0m %s\n' "$*" >&2; }
 warn() { printf '\n\033[1;33m!!>\033[0m %s\n' "$*" >&2; }
@@ -189,15 +198,32 @@ venv_python_path() {
   return 1
 }
 
+venv_is_healthy() {
+  local venv_python prefix
+  venv_python="$(venv_python_path)" || return 1
+  if ! "${venv_python}" -c "pass" >/dev/null 2>&1; then
+    return 1
+  fi
+  prefix="$("${venv_python}" -c "import sys; print(sys.prefix)" 2>/dev/null)" || return 1
+  [[ "${prefix}" == "${PROJECT_ROOT}/${VENV_NAME}" ]]
+}
+
 ensure_venv() {
-  local py311 venv_python
+  local py311 venv_python prefix
   py311="$(python311_path)"
   if [[ ! -x "${py311}" ]]; then
     die "Interpréteur introuvable : ${py311}"
   fi
 
-  if [[ -d "${PROJECT_ROOT}/${VENV_NAME}" ]] && ! venv_python_path >/dev/null; then
-    warn "venv ${VENV_NAME} incomplet ou cassé — recréation"
+  # #region agent log
+  _agent_debug_log "H1" "ensure_venv" "paths" "{\"projectRoot\":\"${PROJECT_ROOT}\",\"venvDir\":\"${PROJECT_ROOT}/${VENV_NAME}\",\"venvExists\":$([[ -d \"${PROJECT_ROOT}/${VENV_NAME}\" ]] && echo true || echo false)}"
+  # #endregion
+
+  if [[ -d "${PROJECT_ROOT}/${VENV_NAME}" ]] && { ! venv_python_path >/dev/null || ! venv_is_healthy; }; then
+    warn "venv ${VENV_NAME} incomplet, déplacé ou cassé — recréation"
+    # #region agent log
+    _agent_debug_log "H2" "ensure_venv" "recreate_broken_venv" "{\"reason\":\"missing_python_or_wrong_prefix\"}"
+    # #endregion
     rm -rf "${PROJECT_ROOT}/${VENV_NAME}"
   fi
 
@@ -206,9 +232,16 @@ ensure_venv() {
   else
     log "Création du venv ${VENV_NAME} avec ${py311}..."
     "${py311}" -m venv "${PROJECT_ROOT}/${VENV_NAME}"
+    # #region agent log
+    _agent_debug_log "H3" "ensure_venv" "venv_created" "{\"py311\":\"${py311}\"}"
+    # #endregion
   fi
 
   venv_python="$(venv_python_path)" || die "venv invalide : ${PROJECT_ROOT}/${VENV_NAME}/bin/python introuvable après création"
+  # #region agent log
+  prefix="$("${venv_python}" -c "import sys; print(sys.prefix)" 2>/dev/null || echo "unknown")"
+  _agent_debug_log "H2" "ensure_venv" "venv_ready" "{\"python\":\"${venv_python}\",\"prefix\":\"${prefix}\"}"
+  # #endregion
   echo "${venv_python}"
 }
 
@@ -219,13 +252,15 @@ ensure_pip_deps() {
   fi
 
   local venv_python="$1"
-  local venv_pip="${venv_python%/*}/pip"
-  [[ -x "${venv_pip}" ]] || venv_pip="${PROJECT_ROOT}/${VENV_NAME}/bin/pip"
 
   log "Mise à jour de pip (peut prendre 10–20 min avec PyTorch)..."
   "${venv_python}" -m pip install --upgrade pip
   log "Installation : ${REQUIREMENTS}"
-  "${venv_pip}" install -r "${PROJECT_ROOT}/${REQUIREMENTS}"
+  # Toujours python -m pip : le script bin/pip casse si le projet a été déplacé.
+  "${venv_python}" -m pip install -r "${PROJECT_ROOT}/${REQUIREMENTS}"
+  # #region agent log
+  _agent_debug_log "H3" "ensure_pip_deps" "pip_install_done" "{\"requirements\":\"${REQUIREMENTS}\"}"
+  # #endregion
 }
 
 ensure_ipykernel() {
