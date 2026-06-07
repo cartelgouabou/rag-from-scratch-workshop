@@ -16,15 +16,6 @@ SKIP_PIP=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
-DEBUG_LOG="${PROJECT_ROOT}/.cursor/debug-8804a1.log"
-
-# #region agent log
-_agent_debug_log() {
-  local hypothesis_id="$1" location="$2" message="$3" data="$4"
-  mkdir -p "${PROJECT_ROOT}/.cursor" 2>/dev/null || true
-  printf '%s\n' "{\"sessionId\":\"8804a1\",\"hypothesisId\":\"${hypothesis_id}\",\"location\":\"${location}\",\"message\":\"${message}\",\"data\":${data},\"timestamp\":$(($(date +%s) * 1000))}" >>"${DEBUG_LOG}" 2>/dev/null || true
-}
-# #endregion
 
 log() { printf '\n\033[1;32m==>\033[0m %s\n' "$*" >&2; }
 warn() { printf '\n\033[1;33m!!>\033[0m %s\n' "$*" >&2; }
@@ -207,23 +198,14 @@ ensure_venv() {
 
   if [[ -d "${PROJECT_ROOT}/${VENV_NAME}" ]] && ! venv_python_path >/dev/null; then
     warn "venv ${VENV_NAME} incomplet ou cassé — recréation"
-    # #region agent log
-    _agent_debug_log "B" "ensure_venv" "remove_broken_venv" "{\"venvDir\":\"${PROJECT_ROOT}/${VENV_NAME}\"}"
-    # #endregion
     rm -rf "${PROJECT_ROOT}/${VENV_NAME}"
   fi
 
   if venv_python_path >/dev/null; then
     log "venv ${VENV_NAME} : déjà présent"
-    # #region agent log
-    _agent_debug_log "B" "ensure_venv" "reuse_existing_venv" "{\"python\":\"$(venv_python_path)\"}"
-    # #endregion
   else
     log "Création du venv ${VENV_NAME} avec ${py311}..."
     "${py311}" -m venv "${PROJECT_ROOT}/${VENV_NAME}"
-    # #region agent log
-    _agent_debug_log "C" "ensure_venv" "venv_created" "{\"py311\":\"${py311}\"}"
-    # #endregion
   fi
 
   venv_python="$(venv_python_path)" || die "venv invalide : ${PROJECT_ROOT}/${VENV_NAME}/bin/python introuvable après création"
@@ -303,9 +285,6 @@ main() {
 
   local venv_python
   venv_python="$(ensure_venv)"
-  # #region agent log
-  _agent_debug_log "A" "main" "captured_venv_python" "{\"length\":${#venv_python},\"executable\":$([[ -x \"${venv_python}\" ]] && echo true || echo false)}"
-  # #endregion
   [[ -x "${venv_python}" ]] || die "Interpréteur venv invalide après capture : ${venv_python}"
   ensure_pip_deps "${venv_python}"
   ensure_ipykernel
