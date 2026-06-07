@@ -153,6 +153,7 @@ cp -n .env.example .env
 | Extensions VS Code | Installer `code` dans le PATH (§D) |
 | Mauvais kernel | **Python: Select Interpreter** → `./.venv-notebook/bin/python` |
 | Docker ne démarre pas | Ouvrir Docker Desktop, accepter la licence, `docker info` |
+| `ERR_CONNECTION_REFUSED` sur localhost | Utiliser **http://localhost:3001** (pas `:3000` — le log Next.js affiche le port interne Docker) |
 | Erreur 429 Gateway (§7) | Pause entre les deux cellules de génération |
 | OCR DocTR lent | Éviter les PDF scannés en démo live |
 
