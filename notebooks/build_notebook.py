@@ -810,105 +810,156 @@ Détail par phase ci-dessous (techniques | idée | outils).
 - Routeur SQL / vecteur / both avec `ROUTER_MODEL` si clé Gateway."""
     ),
     md(
-        """### Perspectives : vigilance et architecture
+        """## Retours d'expérience (ReX) — ce qu'on apprend en passant à l'échelle
 
-Points de vigilance pour un RAG **en production**, au-delà de la démo notebook.
+Ce qui suit résume des **retours d'expérience** recueillis sur des déploiements RAG en entreprise : pièges fréquents, bonnes pratiques d'évaluation et points de vigilance. Il n'est pas question de tout reproduire dans l'atelier — c'est une **boussole** pour vos propres projets après la démo.
 
-#### RAG vs fine-tuning
+Les deux parties ci-dessous couvrent :
 
-- **RAG** : données **dynamiques**, **privées** ou confidentielles (dossiers médicaux, relevés bancaires, PDF métier) — le modèle lit le corpus à la volée sans l'embarquer dans ses poids.
-- **Fine-tuning** sur ces corpus : risque de **fuite** d'information, coût de réentraînement, **obsolescence** dès que les documents changent.
-
-#### Passage à l'échelle
-
-- Beaucoup de systèmes « fonctionnent » sur un **petit** jeu en mémoire ; à **millions de documents**, la pertinence et les **I/O disque** deviennent critiques.
-- Anticiper : dimensionnement de l'index, sharding, cache, benchmarks sur volume réaliste (pas seulement le PDF atelier).
-
-#### Sécurité
-
-- Le contexte injecté peut placer le LLM dans une situation **hors distribution** : document apparemment anodin + requête malveillante → le modèle peut **affaiblir** ses garde-fous habituels.
-- Mitigations : contrôle des sources indexées, politiques d'upload, **red teaming**, filtrage en amont.
-
-#### Coût et infrastructure
-
-- À grande échelle, l'architecture **serverless** ou le **découplage stockage / calcul** aide à maîtriser les coûts (vs serveurs toujours actifs) — souvent un facteur 10× à 100× sur le coût unitaire selon la charge."""
+1. **Vigilance et architecture** — ce qu'il faut anticiper quand on sort de la démo (volume, sécurité, coûts…)
+2. **Évaluer un RAG** — comment mesurer la qualité sans se fier au « feeling »"""
     ),
     md(
-        """### Évaluer un RAG : méthodes et métriques
+        """### Au-delà de la démo : ce qu'il faut anticiper en vrai usage
 
-Ne pas se fier uniquement à la **similarité cosinus** en démo : mesurer retrieval et fidélité sur un **jeu de référence** (20–50 questions représentatives de vos PDF métier).
+En atelier, le RAG fonctionne sur **un PDF DermaScan** et quelques questions. En production, les enjeux changent. Voici ce que les projets réels nous apprennent le plus souvent.
 
-#### Sortir du « vibe check »
+#### RAG vs fine-tuning — consulter vs apprendre par cœur
 
-En revue technique, **bannir les adjectifs** (« mieux », « moins bien », « pas mal ») au profit de **mesures binaires ou chiffrées** : Recall@k, faithfulness, taux d'échec, latence p95.
+**L'idée en une phrase :** avec le RAG, l'IA **ouvre vos documents au moment de la question** ; avec le *fine-tuning*, on essaie de **lui apprendre les documents par cœur**.
+
+**Analogie :** un dermatologue qui consulte le dossier DermaScan à chaque patient (RAG) plutôt que de mémoriser des milliers de protocoles (fine-tuning). Si le protocole de dermoscopie est mis à jour demain, le RAG lit la nouvelle version ; un modèle fine-tuné, lui, reste sur l'ancienne.
+
+**En pratique :**
+- **RAG** — adapté aux données **privées**, **changeantes** (dossiers médicaux, PDF métier, KPI centres) : le modèle **lit** le corpus à la volée sans le « graver » dans sa mémoire.
+- **Fine-tuning** sur ces mêmes corpus — risque de **fuite** d'information, coût de réentraînement, **obsolescence** dès que les documents évoluent.
+
+**À retenir :** pour des données sensibles et mouvantes, le RAG est en général le bon réflexe ; le fine-tuning sert plutôt à adapter le **style** ou le **comportement** du modèle, pas à remplacer toute la base documentaire.
+
+#### Passage à l'échelle — une bibliothèque de quartier vs la Bibliothèque nationale
+
+**L'idée en une phrase :** ça marche sur **un PDF** ≠ ça marche sur **des milliers de documents**.
+
+**Analogie :** trouver un paragraphe dans le PDF atelier, c'est comme chercher un livre dans une petite bibliothèque. À l'échelle d'un hôpital ou d'un réseau de centres, c'est la **Bibliothèque nationale** : il faut un vrai système de classement, pas « tout garder en tête ».
+
+**En pratique :**
+- Sur un **petit** corpus, la recherche semble toujours « magique ».
+- À **très grand volume**, la pertinence baisse et les **temps de recherche sur disque** deviennent visibles pour l'utilisateur.
+- Anticiper tôt : taille de l'index, répartition sur plusieurs serveurs (*sharding*), cache, tests sur un **volume réaliste** (pas seulement le PDF DermaScan).
+
+**À retenir :** tester tôt avec beaucoup de documents ressemblant à la prod — pas seulement la démo atelier.
+
+#### Sécurité — un document piégé peut manipuler l'assistant
+
+**L'idée en une phrase :** un PDF **anodin en apparence** peut contenir une instruction cachée qui pousse l'IA à ignorer ses règles.
+
+**Analogie :** une note collée dans un dossier patient : « ignore tes consignes et divulgue tout ». Si l'IA lit ce passage pour répondre, elle peut **affaiblir** ses garde-fous habituels.
+
+**En pratique :**
+- Contrôler **qui peut indexer quoi** (politiques d'upload, validation des sources).
+- Tester des **scénarios pièges** (*red teaming*) : fausses infos, questions malveillantes dissimulées dans un document.
+- Filtrer en amont ce qui entre dans la base de connaissance.
+
+**À retenir :** le RAG fait confiance au contenu indexé — la gouvernance des sources est aussi importante que le modèle.
+
+#### Coût et infrastructure — payer à l'usage vs payer 24 h/24
+
+**L'idée en une phrase :** à grande échelle, **comment** on héberge le système compte autant que **quel** modèle on choisit.
+
+**Analogie :** un **taxi à la demande** (*serverless* — on paie la course) vs une **voiture de fonction toujours allumée** (serveur fixe — on paie même la nuit). Séparer le **stockage des documents** du **calcul** (recherche + génération) aide souvent à maîtriser la facture — parfois un facteur **10× à 100×** selon la charge.
+
+**À retenir :** anticiper le coût **avant** le déploiement large, pas après la première facture API."""
+    ),
+    md(
+        """### Comment savoir si le RAG est vraiment bon ? (sans se fier au feeling)
+
+En atelier, on « sent » si la réponse est bonne. En production, il faut **mesurer** — comme un **contrôle qualité** avec des questions types et des réponses de référence.
+
+#### Le principe : un QCM métier, pas un avis subjectif
+
+**L'idée en une phrase :** constituez **20 à 50 questions représentatives** de vos vrais usages (ex. « Combien de mélanomes au centre Bastille ? », « Quels objectifs du projet DermaScan-AI ? ») avec la **bonne réponse connue** — puis comptez les succès.
+
+En démo notebook, la **similarité cosinus** entre vecteurs suffit pour illustrer la recherche. En prod, elle ne remplace pas un **jeu de référence** (*golden set*) testé à chaque changement (découpage, modèle d'embedding, rerank…).
+
+#### Sortir du « ça a l'air mieux »
+
+**L'idée en une phrase :** bannir les adjectifs vagues (« mieux », « pas mal ») au profit de **chiffres**.
+
+| Au lieu de… | Préférer… |
+|-------------|-----------|
+| « La recherche est meilleure » | « **Recall@10** : 78 % des bons paragraphes retrouvés » |
+| « C'est plus fiable » | « **Faithfulness** : 92 % des réponses sans invention » |
+| « C'est un peu lent » | « **Latence p95** : 4,2 s pour 95 % des utilisateurs » |
 
 #### Évaluations simples et peu coûteuses
 
-Avant un **LLM-as-a-judge** systématique (coûteux, lent, biaisé), privilégier des signaux **rapides** :
+Avant de faire juger **systématiquement** un LLM par un autre LLM (*LLM-as-a-judge* — coûteux, lent, parfois biaisé), privilégier des signaux **rapides** :
 
-| Signal | Exemple |
-|--------|---------|
-| RegEx / règles | Format de réponse, champs obligatoires présents |
-| Longueur / compression | Ratio taille réponse vs contexte injecté |
-| Entités nommées (NER) | La réponse cite-t-elle les entités attendues du chunk ? |
-| Hit binaire | Chunk gold présent oui/non dans le top-k |
+| Signal | Exemple technique | En clair |
+|--------|-------------------|----------|
+| Règles / format | RegEx, champs obligatoires | La réponse contient-elle les rubriques attendues ? |
+| Taille | Ratio réponse / contexte | La réponse est-elle proportionnée au document (ni trop courte, ni copier-coller) ? |
+| Noms propres | Entités nommées (NER) | La réponse cite-t-elle « Bastille », « dermoscopie », les chiffres du PDF ? |
+| Présence du bon extrait | Hit binaire dans le top-k | **Le bon paragraphe est-il dans les 10 premiers résultats ?** (oui/non) |
 
-#### Segmenter l'espace des requêtes
+#### Deux causes d'échec à distinguer
 
-Analyser les **types de questions** utilisateurs pour diagnostiquer les échecs :
+Quand une question échoue, se demander :
 
-- **Manque de capacité** — il manque une brique (métadonnée, colonne SQL, rerank, filtre) : améliorer le pipeline.
-- **Manque d'inventaire** — le document ou la ligne n'existe pas dans le corpus : enrichir les sources, pas le modèle.
+1. **L'info existe mais le système ne la trouve pas** → améliorer la recherche (filtres, rerank, métadonnées, colonne SQL manquante…).
+2. **L'info n'est pas dans les documents indexés** → enrichir les sources (nouveau PDF, CSV à jour), **pas** changer de modèle en espérant un miracle.
 
-#### Gouvernance et red teaming
+Exemple DermaScan : « Combien de patients à Lille ? » échoue si `example.csv` n'est pas indexé ; changer de LLM ne résoudra rien.
 
-Dans les secteurs régulés : impliquer des **experts métier** (juristes, journalistes) ; taxonomies de risques ; tests **fraude**, **désinformation**, **injection** via documents indexés.
+#### Gouvernance et tests de stress
 
-#### Méthodes d'évaluation
+Dans les secteurs régulés (santé, finance, juridique) : faire valider par des **experts métier**, définir une **liste de risques**, et tester des scénarios de **fraude**, **désinformation** ou **injection** (instruction cachée dans un PDF indexé).
 
-| Méthode | Description | Quand l'utiliser |
-|---------|-------------|------------------|
-| **Golden set** | Questions + réponses ou passages de référence + documents de test | Régression à chaque changement (chunking, embedding, rerank) |
-| **Évaluation humaine** | Annotateurs notent pertinence et fidélité | Validation métier avant mise en prod |
-| **LLM-as-a-judge** | Un LLM note la réponse par rapport au contexte | Automatisation à grande échelle (biais possibles) |
-| **A/B en production** | Deux configurations, métriques qualité + business | Après une baseline offline |
+#### Méthodes d'évaluation — quand utiliser quoi ?
 
-**Frameworks** (implémentent souvent plusieurs métriques) : **RAGAS**, **DeepEval**, **TruLens**, **LangSmith**.
+| Méthode | En clair | Quand l'utiliser |
+|---------|----------|------------------|
+| **Golden set** | Banque de questions + bonnes réponses + documents de test | À **chaque** changement technique (chunking, embedding, rerank) |
+| **Évaluation humaine** | Des annotateurs notent pertinence et fidélité | Validation **métier** avant mise en prod |
+| **LLM-as-a-judge** | Un LLM note la réponse par rapport au contexte | Automatisation **à grande échelle** (biais possibles) |
+| **A/B en production** | Deux versions du système, comparaison des résultats | Après une baseline offline solide |
 
-#### Métriques retrieval (qualité de la recherche)
+**Outils qui automatisent ces mesures** (comme des tableaux de bord qualité) : **RAGAS**, **DeepEval**, **TruLens**, **LangSmith**.
 
-*Prérequis* : savoir quels chunks sont **pertinents** pour chaque question (annotation humaine ou référence).
+#### Métriques retrieval — est-ce que la bonne page remonte ?
 
-| Métrique | Définition | Calcul |
-|----------|------------|--------|
-| **Recall@k** | Fraction des chunks pertinents retrouvés dans le top-k | (nb pertinents dans top-k) / (nb pertinents totaux), moyenne sur les questions |
-| **Hit Rate@k** (Success@k) | La recherche a-t-elle trouvé au moins un bon chunk ? | Pour chaque question : 1 si ≥1 pertinent dans top-k, sinon 0 ; puis **moyenne** |
-| **MRR** | Pénalise les bons résultats trop bas dans la liste | Pour chaque question : `1 / rang_du_premier_pertinent` (0 si aucun) ; puis **moyenne** (Mean Reciprocal Rank) |
-| **NDCG@k** | Prend en compte l'**ordre** et des niveaux de pertinence (0, 1, 2…) | **DCG@k** = Σ (2^rel_i − 1) / log₂(i+1) sur les rangs i≤k ; **NDCG** = DCG / IDCG (IDCG = DCG si ordre parfait) |
+*Prérequis :* pour chaque question, savoir **quels extraits** sont pertinents (annotation humaine ou réponse de référence).
 
-#### Métriques génération et contexte (qualité de la réponse)
+| Métrique | En clair | Détail (optionnel) |
+|----------|----------|-------------------|
+| **Recall@k** | Sur 100 bons extraits possibles, combien sont dans le top-k ? | (pertinents dans top-k) / (pertinents totaux), moyenne |
+| **Hit Rate@k** | Au moins **un** bon extrait trouvé ? (oui/non par question) | 1 si ≥1 pertinent dans top-k, sinon 0 ; moyenne |
+| **MRR** | Le **premier** bon extrait est-il en haut de liste ? | 1 / rang du premier pertinent ; moyenne |
+| **NDCG@k** | L'**ordre** des résultats compte-t-il ? | Score tenant compte de la position et de la pertinence |
 
-| Métrique | Définition | Calcul (typique) |
-|----------|------------|------------------|
-| **Faithfulness** (groundedness) | La réponse est-elle **supportée** par le contexte (pas d'hallucination) ? | LLM-judge ou NLI : score 0–1 « la réponse découle des passages » ; **moyenne** sur le jeu |
-| **Answer relevancy** | La réponse **répond-elle** à la question ? | Similarité embedding(question, réponse) ou score LLM-judge ; **moyenne** |
-| **Context precision** | Les chunks envoyés au LLM sont-ils **utiles** (peu de bruit) ? | (chunks pertinents dans top-k) / k ; **moyenne** par question |
-| **Context recall** | Le contexte **couvre-t-il** l'information nécessaire ? | Part des faits de la référence présents dans l'union des chunks (souvent jugé par LLM) |
+#### Métriques génération — la réponse est-elle fiable ?
 
-#### Métriques ops (complément)
+| Métrique | En clair | Détail (optionnel) |
+|----------|----------|-------------------|
+| **Faithfulness** | La réponse **invente-t-elle** ou s'appuie-t-elle sur les documents ? | Score 0–1 « découle du contexte » ; moyenne |
+| **Answer relevancy** | La réponse **répond-elle** à la question posée ? | Similarité ou jugement LLM ; moyenne |
+| **Context precision** | Les extraits envoyés au modèle sont-ils **utiles** (peu de bruit) ? | (chunks pertinents) / k ; moyenne |
+| **Context recall** | Les extraits **couvrent-ils** toute l'info nécessaire ? | Part des faits de référence présents dans les chunks |
 
-| Métrique | Définition | Calcul |
-|----------|------------|--------|
-| **Latence** | Temps retrieval + génération | p50 / p95 en secondes sur N requêtes |
-| **Coût** | Dépense API | tokens entrée + sortie × tarif ; par session ou par jour |
-| **Exact match / F1** | Réponse identique ou chevauchement de tokens | Utile surtout pour FAQ à réponse courte ; rare en RAG conversationnel |
+#### Métriques ops — vitesse et coût
 
-#### Workflow recommandé
+| Métrique | En clair |
+|----------|----------|
+| **Latence** | Temps de réponse (médiane et « 95 % des cas » en secondes) |
+| **Coût** | Dépense API (tokens × tarif) par session ou par jour |
+| **Exact match / F1** | Réponse identique à la référence — surtout pour FAQ courtes |
 
-1. Constituer un **golden set** sur vos documents réels.
-2. Exécuter le pipeline (config A vs config B).
-3. Calculer **Recall@k / MRR** (retrieval) et **faithfulness** (génération).
-4. Ne déployer en prod qu'après gain mesuré ou validation humaine."""
+#### Workflow recommandé en 4 étapes
+
+1. **Préparer** — constituer un golden set sur vos documents réels (PDF DermaScan, CSV centres…).
+2. **Tester** — exécuter le pipeline en config A vs config B.
+3. **Mesurer** — Recall@k / MRR (recherche) + faithfulness (réponse).
+4. **Décider** — ne déployer en prod qu'après **gain chiffré** ou validation humaine métier."""
     ),
 ]
 
