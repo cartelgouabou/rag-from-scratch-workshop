@@ -28,7 +28,8 @@ class VercelAIGatewayClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        normalized = self.api_key.strip().lower()
+        return bool(normalized) and normalized not in {"replace_me", "changeme", "your_key_here"}
 
     async def complete(
         self,

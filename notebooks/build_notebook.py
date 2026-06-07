@@ -72,6 +72,7 @@ if sys.version_info < (3, 9):
     code(
         """from config import get_settings
 
+get_settings.cache_clear()
 settings = get_settings()
 CHUNK_SIZE = settings.chunk_size
 CHUNK_OVERLAP = settings.chunk_overlap
@@ -81,12 +82,18 @@ EMBEDDING_MODEL_PROD = settings.embedding_model
 ROUTER_MODEL_PROD = settings.router_model
 ANSWER_MODEL_PROD = settings.answer_model
 
+_gateway_key = settings.vercel_ai_gateway_key.strip()
+_gateway_ok = bool(_gateway_key) and _gateway_key.lower() not in {"replace_me", "changeme", "your_key_here"}
+
 print("Paramètres clés (alignés sur config.py / .env):")
 print(f"  CHUNK_SIZE={CHUNK_SIZE}, CHUNK_OVERLAP={CHUNK_OVERLAP}")
 print(f"  VECTOR_TOP_K={VECTOR_TOP_K}, OCR_DPI={OCR_DPI}")
 print(f"  Prod embeddings: {EMBEDDING_MODEL_PROD}")
 print(f"  Prod routeur: {ROUTER_MODEL_PROD}")
 print(f"  Prod réponse (.env): {ANSWER_MODEL_PROD}")
+print(
+    f"  Gateway key: {'OK (' + str(len(_gateway_key)) + ' car.)' if _gateway_ok else 'MANQUANTE — renseignez VERCEL_AI_GATEWAY_KEY dans .env à la racine'}"
+)
 print("  Atelier génération: choisi en section 7 (WORKSHOP_ANSWER_MODEL_KEY)")"""
     ),
     md(
@@ -556,6 +563,7 @@ import httpx
 import nest_asyncio
 from agent.llm_client import VercelAIGatewayClient
 from api.routes_chat import VECTOR_PROMPT
+from config import get_settings
 
 # --- Choix du modèle atelier (modifier ici) ---
 WORKSHOP_ANSWER_MODELS = {
@@ -574,6 +582,9 @@ WORKSHOP_ANSWER_MODEL = WORKSHOP_ANSWER_MODELS[WORKSHOP_ANSWER_MODEL_KEY]
 
 nest_asyncio.apply()
 
+get_settings.cache_clear()
+settings = get_settings()
+
 gateway = VercelAIGatewayClient(
     settings.vercel_ai_gateway_url,
     settings.vercel_ai_gateway_key,
@@ -583,7 +594,9 @@ gateway = VercelAIGatewayClient(
 
 if not gateway.is_configured:
     raise RuntimeError(
-        "VERCEL_AI_GATEWAY_KEY manquante. Copiez .env.example vers .env et renseignez la clé."
+        "VERCEL_AI_GATEWAY_KEY manquante ou placeholder. "
+        "Copiez .env.example vers .env à la racine du projet, renseignez une clé AI Gateway valide, "
+        "puis réexécutez la cellule des paramètres et celle-ci."
     )
 
 
@@ -601,6 +614,13 @@ async def workshop_gateway_complete(*, system: str, user: str, max_tokens: int) 
                 "Limite Vercel AI Gateway (429) — free tier sur ce modèle. "
                 f"Attendez {WORKSHOP_GATEWAY_PAUSE_SECONDS}s puis réexécutez la cellule « Avec RAG », "
                 "ou augmentez WORKSHOP_GATEWAY_PAUSE_SECONDS / passez à des crédits payants."
+            ) from None
+        if exc.response.status_code == 401:
+            raise RuntimeError(
+                "Authentification Vercel AI Gateway échouée (401). "
+                "Vérifiez VERCEL_AI_GATEWAY_KEY dans le .env à la racine du projet "
+                "(clé valide : Vercel → AI Gateway → API Keys). "
+                "Redémarrez le kernel Jupyter après modification du .env."
             ) from None
         raise
 
